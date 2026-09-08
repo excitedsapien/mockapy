@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const method = ref('GET')
 const endpoint = ref('/api/users')
@@ -14,8 +14,18 @@ const headers = ref('Content-Type: application/json')
 const isSaving = ref(false)
 const notice = ref('')
 const response = ref(null)
+const isDark = ref(false)
 
 const curlCommand = computed(() => `curl -X ${method.value} "${window.location.origin}${endpoint.value}"`)
+
+onMounted(() => {
+  isDark.value = localStorage.getItem('mockapy-theme') === 'dark'
+})
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  localStorage.setItem('mockapy-theme', isDark.value ? 'dark' : 'light')
+}
 
 async function saveMock() {
   notice.value = ''
@@ -39,8 +49,8 @@ async function copy(value, message) {
 </script>
 
 <template>
-  <main class="shell">
-    <header class="topbar"><a class="brand" href="/" aria-label="Mockapy home"><span class="brand-mark">M</span><span>mockapy</span></a><div class="topbar-meta"><span class="status-dot"></span> workspace / personal <span class="avatar">MP</span></div></header>
+  <main class="shell" :class="{ dark: isDark }">
+    <header class="topbar"><a class="brand" href="/" aria-label="Mockapy home"><span class="brand-mark">M</span><span>mockapy</span></a><div class="topbar-meta"><span class="status-dot"></span> workspace / personal <button class="theme-toggle" type="button" :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'" @click="toggleTheme"><span aria-hidden="true">{{ isDark ? 'sun' : 'moon' }}</span></button><span class="avatar">MP</span></div></header>
     <section class="intro"><div><p class="eyebrow">API playground</p><h1>Shape the response<br /><em>before</em> you ship it.</h1><p class="lede">A tiny, calm place to design mock endpoints and share a contract with your team.</p></div><div class="intro-note"><span>01</span><p>Draft an endpoint<br />in a few seconds.</p></div></section>
     <section class="workspace">
       <div class="section-heading"><div><span class="kicker">01 / endpoint</span><h2>Define your route</h2></div><span class="pill">Unsaved draft</span></div>

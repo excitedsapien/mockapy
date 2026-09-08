@@ -17,7 +17,7 @@ The service role key is used only by `netlify/functions/mock.js`. Do not commit 
 After deployment, save a mock in the app, then call the saved GET route:
 
 ```sh
-curl "https://YOUR-SITE.netlify.app/.netlify/functions/mock?path=/api/users"
+curl "https://YOUR-SITE.netlify.app/api/users"
 ```
 
 The response comes from Supabase when the environment variables are configured. Without them, the function returns its local fallback response.
