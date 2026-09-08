@@ -132,6 +132,82 @@ function buildResponse(rawMock, requestedPath, query, body) {
   }
 }
 
+function isSchemaMismatchError(error) {
+  const message = (error && error.message) || ''
+  return message.includes('does not exist') || message.includes('column') || message.includes('Could not find')
+}
+
+async function readPersistedMock(path, method, userId) {
+  if (!supabase) return null
+
+  try {
+    const { data, error } = await supabase
+      .from('mocks')
+      .select('status, body, headers, rules, user_id')
+      .eq('path', path)
+      .eq('method', method)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data
+  } catch (error) {
+    if (!isSchemaMismatchError(error)) {
+      throw error
+    }
+
+    const { data, legacyError } = await supabase
+      .from('mocks')
+      .select('status, body, headers')
+      .eq('path', path)
+      .eq('method', method)
+      .maybeSingle()
+
+    if (legacyError) throw legacyError
+    return data ? { status: data.status, body: data.body, headers: data.headers, rules: [] } : null
+  }
+}
+
+async function persistMock(savedMock) {
+  if (!supabase) return
+
+  try {
+    const { error } = await supabase
+      .from('mocks')
+      .upsert(
+        {
+          path: savedMock.path,
+          method: savedMock.method,
+          user_id: savedMock.userId,
+          status: savedMock.status,
+          headers: savedMock.headers,
+          body: savedMock.body,
+          rules: savedMock.rules
+        },
+        { onConflict: 'path,method,user_id' }
+      )
+
+    if (error) throw error
+  } catch (error) {
+    if (!isSchemaMismatchError(error)) throw error
+
+    const { error: fallbackError } = await supabase
+      .from('mocks')
+      .upsert(
+        {
+          path: savedMock.path,
+          method: savedMock.method,
+          status: savedMock.status,
+          headers: savedMock.headers,
+          body: savedMock.body
+        },
+        { onConflict: 'path,method' }
+      )
+
+    if (fallbackError) throw fallbackError
+  }
+}
+
 export default async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('', { status: 204, headers: baseHeaders })
@@ -174,24 +250,7 @@ export default async (request) => {
       const key = getStoreKey(mock.path, mock.method, savedMock.userId)
       localMocks.set(key, savedMock)
 
-      if (supabase) {
-        const { error } = await supabase
-          .from('mocks')
-          .upsert(
-            {
-              path: mock.path,
-              method: mock.method,
-              user_id: savedMock.userId,
-              status: savedMock.status,
-              headers: savedMock.headers,
-              body: savedMock.body,
-              rules: savedMock.rules
-            },
-            { onConflict: 'path,method,user_id' }
-          )
-
-        if (error) throw error
-      }
+      await persistMock(savedMock)
 
       return new Response(
         JSON.stringify({
@@ -226,30 +285,24 @@ export default async (request) => {
   }
 
   if (supabase) {
-    const { data, error } = await supabase
-      .from('mocks')
-      .select('status, body, headers, rules')
-      .eq('path', requestedPath)
-      .eq('method', requestedMethod)
-      .eq('user_id', requestedUser)
-      .maybeSingle()
+    try {
+      const data = await readPersistedMock(requestedPath, requestedMethod, requestedUser)
 
-    if (error) {
+      if (data) {
+        const response = buildResponse({
+          status: data.status,
+          headers: data.headers,
+          body: data.body,
+          rules: data.rules || []
+        }, requestedPath, url.searchParams, requestBody)
+
+        return new Response(JSON.stringify(response.body), {
+          status: response.status,
+          headers: response.headers
+        })
+      }
+    } catch (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: baseHeaders })
-    }
-
-    if (data) {
-      const response = buildResponse({
-        status: data.status,
-        headers: data.headers,
-        body: data.body,
-        rules: data.rules || []
-      }, requestedPath, url.searchParams, requestBody)
-
-      return new Response(JSON.stringify(response.body), {
-        status: response.status,
-        headers: response.headers
-      })
     }
   }
 
