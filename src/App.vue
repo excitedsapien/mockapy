@@ -16,6 +16,10 @@ const notice = ref('')
 const response = ref(null)
 const isDark = ref(false)
 const activeUser = ref('user-1')
+const testQuery = ref('')
+const testBody = ref('')
+const testResult = ref(null)
+const isTesting = ref(false)
 const userSlots = Array.from({ length: 5 }, (_, index) => `user-${index + 1}`)
 const advancedRules = ref(`[
   {
@@ -52,12 +56,65 @@ const curlCommand = computed(() => {
   const url = new URL(`${window.location.origin}/.netlify/functions/mock`)
   url.searchParams.set('path', endpoint.value)
   url.searchParams.set('user', activeUser.value)
+
+  if (testQuery.value.trim()) {
+    const queryParams = new URLSearchParams(testQuery.value.replace(/^\?/, ''))
+    queryParams.forEach((value, key) => {
+      url.searchParams.set(key, value)
+    })
+  }
+
   if (method.value !== 'GET') {
     url.searchParams.set('method', method.value)
   }
 
   return `curl -X ${method.value} "${url.toString()}"`
 })
+
+const testUrl = computed(() => {
+  const url = new URL(`${window.location.origin}/.netlify/functions/mock`)
+  url.searchParams.set('path', endpoint.value)
+  url.searchParams.set('user', activeUser.value)
+
+  if (testQuery.value.trim()) {
+    const queryParams = new URLSearchParams(testQuery.value.replace(/^\?/, ''))
+    queryParams.forEach((value, key) => {
+      url.searchParams.set(key, value)
+    })
+  }
+
+  return url.toString()
+})
+
+const requestBaseUrl = computed(() => {
+  const url = new URL(`${window.location.origin}/.netlify/functions/mock`)
+  url.searchParams.set('path', endpoint.value)
+  url.searchParams.set('user', activeUser.value)
+  return url.toString()
+})
+
+const usageExamples = computed(() => [
+  {
+    title: 'Basic GET request',
+    helper: 'Open this URL in the browser or paste it into Postman to receive the saved mock for the selected user slot.',
+    value: requestBaseUrl.value
+  },
+  {
+    title: 'Query-matched request',
+    helper: 'Append query values such as id=1 to trigger a rule that checks query params.',
+    value: `${requestBaseUrl.value}&id=1`
+  },
+  {
+    title: 'Path param request',
+    helper: 'For route-based rules, use a URL like /api/users/2 and swap the path as needed.',
+    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/2')}&user=${encodeURIComponent(activeUser.value)}`
+  },
+  {
+    title: 'Body-aware request',
+    helper: 'Use this cURL when your rule compares request JSON fields.',
+    value: `curl -X POST "${requestBaseUrl.value}" -H "Content-Type: application/json" -d '{"id":1,"role":"admin"}'`
+  }
+])
 
 const exampleResponse = `{
   "message": "Hello from Mockapy",
@@ -155,6 +212,53 @@ async function saveMock() {
   }
 }
 
+async function runRequestTest() {
+  isTesting.value = true
+  testResult.value = null
+  notice.value = ''
+
+  try {
+    const url = new URL(`${window.location.origin}/.netlify/functions/mock`)
+    url.searchParams.set('path', endpoint.value)
+    url.searchParams.set('user', activeUser.value)
+
+    if (testQuery.value.trim()) {
+      const queryParams = new URLSearchParams(testQuery.value.replace(/^\?/, ''))
+      queryParams.forEach((value, key) => {
+        url.searchParams.set(key, value)
+      })
+    }
+
+    const options = {
+      method: method.value,
+      headers: { 'Content-Type': 'application/json' }
+    }
+
+    if (method.value !== 'GET') {
+      const trimmedBody = testBody.value.trim()
+      options.body = JSON.stringify(trimmedBody ? JSON.parse(trimmedBody) : {})
+    }
+
+    const result = await fetch(url, options)
+    const body = await result.text()
+
+    testResult.value = {
+      status: result.status,
+      body: body ? JSON.parse(body) : null
+    }
+
+    notice.value = result.ok ? 'Request test completed.' : 'Request returned an error.'
+  } catch (error) {
+    testResult.value = {
+      status: 0,
+      error: error.message || 'Request failed.'
+    }
+    notice.value = 'Request test failed. Check your query/body values.'
+  } finally {
+    isTesting.value = false
+  }
+}
+
 async function copy(value, message) {
   await navigator.clipboard.writeText(value)
   notice.value = message
@@ -165,6 +269,15 @@ async function copy(value, message) {
   <main class="shell" :class="{ dark: isDark }">
     <header class="topbar"><a class="brand" href="/" aria-label="Mockapy home"><span class="brand-mark">M</span><span>mockapy</span></a><div class="topbar-meta"><span class="status-dot"></span> workspace / personal <button class="theme-toggle" type="button" :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'" @click="toggleTheme"><span aria-hidden="true">{{ isDark ? 'sun' : 'moon' }}</span></button><span class="avatar">MP</span></div></header>
     <section class="intro"><div><p class="eyebrow">API playground</p><h1>Shape the response<br /><em>before</em> you ship it.</h1><p class="lede">A tiny, calm place to design mock endpoints and share a contract with your team.</p></div><div class="intro-note"><span>01</span><p>Draft an endpoint<br />in a few seconds.</p></div></section>
+    <section class="how-to-use">
+      <div class="section-heading"><div><span class="kicker">00 / how to use</span><h2>Beginner guide</h2></div></div>
+      <div class="steps-grid">
+        <div class="step-card"><span class="step-number">1</span><h3>Choose a user slot</h3><p>Pick user-1 through user-5 so each teammate can work on separate mock responses without overwriting someone else.</p></div>
+        <div class="step-card"><span class="step-number">2</span><h3>Define the endpoint</h3><p>Set the path, HTTP method, and JSON response you want the mock API to return.</p></div>
+        <div class="step-card"><span class="step-number">3</span><h3>Use advanced rules</h3><p>Add query, params, or body matching rules when the same endpoint should return different responses for different requests.</p></div>
+        <div class="step-card"><span class="step-number">4</span><h3>Copy a ready-to-use URL</h3><p>Use the examples below to paste the request directly into your browser, Postman, or frontend app.</p></div>
+      </div>
+    </section>
     <section class="workspace">
       <div class="section-heading"><div><span class="kicker">01 / endpoint</span><h2>Define your route</h2></div><span class="pill">Unsaved draft</span></div>
       <div class="request-line"><select v-model="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input v-model="endpoint" aria-label="Endpoint path" spellcheck="false" /><button class="ghost-button" type="button" @click="copy(endpoint, 'Endpoint copied to clipboard')">Copy path</button></div>
@@ -197,9 +310,41 @@ async function copy(value, message) {
           </div>
         </div>
       </div>
+      <div class="usage-examples">
+        <div class="section-heading"><div><span class="kicker">04 / copy-ready</span><h2>Copy a ready-to-use URL</h2></div></div>
+        <div class="usage-grid">
+          <div v-for="example in usageExamples" :key="example.title" class="usage-card">
+            <div class="usage-head"><h3>{{ example.title }}</h3><button class="tiny-button" type="button" @click="copy(example.value, `${example.title} copied to clipboard`)">Copy</button></div>
+            <p>{{ example.helper }}</p>
+            <code>{{ example.value }}</code>
+          </div>
+        </div>
+      </div>
       <div class="action-row"><button class="primary-button" type="button" :disabled="isSaving" @click="saveMock">{{ isSaving ? 'Saving...' : 'Save mock' }} <span>→</span></button><span class="notice" :class="{ error: notice.includes('valid') || notice.includes('Could') }">{{ notice }}</span></div>
       <div v-if="response" class="result-panel"><div class="result-head"><span><span class="success-dot"></span> Function response</span><button class="tiny-button" type="button" @click="copy(JSON.stringify(response, null, 2), 'Result copied to clipboard')">Copy result</button></div><pre>{{ JSON.stringify(response, null, 2) }}</pre></div>
       <div class="share-strip"><div><span class="kicker">Quick share</span><strong>Hand this contract to your frontend.</strong></div><code>{{ curlCommand }}</code><button class="ghost-button" type="button" @click="copy(curlCommand, 'cURL command copied to clipboard')">Copy cURL</button></div>
+      <div class="section-heading response-heading"><div><span class="kicker">04 / tester</span><h2>Try the mock live</h2></div><span class="helper">Beginner-friendly preview of the exact URL and response</span></div>
+      <div class="editor-grid">
+        <div class="editor-panel">
+          <div class="panel-label"><span>Request tester <small>Live</small></span><div><button class="tiny-button" type="button" :disabled="isTesting" @click="runRequestTest">{{ isTesting ? 'Testing...' : 'Run test' }}</button></div></div>
+          <div class="tester-grid">
+            <label>Query params <input v-model="testQuery" aria-label="Query params for mock tester" placeholder="id=1&scenario=success" spellcheck="false" /></label>
+            <label>Request body <textarea v-model="testBody" aria-label="Request body for mock tester" placeholder='{"id": 1, "role": "admin"}' spellcheck="false"></textarea></label>
+          </div>
+        </div>
+        <div class="settings-panel">
+          <div class="hint"><span class="hint-icon">i</span><p>Use the URL below to copy the exact request for the current endpoint, selected user slot, and query parameters.</p></div>
+          <div class="advanced-example">
+            <strong>Copyable mock URL</strong>
+            <code>{{ testUrl }}</code>
+          </div>
+          <button class="ghost-button" type="button" @click="copy(testUrl, 'Mock URL copied to clipboard')">Copy mock URL</button>
+          <div v-if="testResult" class="result-panel compact-result">
+            <div class="result-head"><span><span class="success-dot"></span> Test response</span></div>
+            <pre>{{ testResult.error ? testResult.error : JSON.stringify(testResult.body, null, 2) }}</pre>
+          </div>
+        </div>
+      </div>
     </section>
     <footer><span>mockapy / 2026</span><span>Powered by Vue + Netlify + Supabase</span></footer>
   </main>
