@@ -17,6 +17,10 @@ const response = ref(null)
 const isDark = ref(false)
 
 const curlCommand = computed(() => `curl -X ${method.value} "${window.location.origin}${endpoint.value}"`)
+const exampleResponse = `{
+  "message": "Hello from Mockapy",
+  "success": true
+}`
 
 onMounted(() => {
   isDark.value = localStorage.getItem('mockapy-theme') === 'dark'
@@ -25,6 +29,11 @@ onMounted(() => {
 function toggleTheme() {
   isDark.value = !isDark.value
   localStorage.setItem('mockapy-theme', isDark.value ? 'dark' : 'light')
+}
+
+function useExample() {
+  responseBody.value = exampleResponse
+  notice.value = 'Example response loaded. Edit it before saving.'
 }
 
 async function saveMock() {
@@ -56,7 +65,7 @@ async function copy(value, message) {
       <div class="section-heading"><div><span class="kicker">01 / endpoint</span><h2>Define your route</h2></div><span class="pill">Unsaved draft</span></div>
       <div class="request-line"><select v-model="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input v-model="endpoint" aria-label="Endpoint path" spellcheck="false" /><button class="ghost-button" type="button" @click="copy(endpoint, 'Endpoint copied to clipboard')">Copy path</button></div>
       <div class="section-heading response-heading"><div><span class="kicker">02 / response</span><h2>Make it real</h2></div><span class="helper">JSON is validated before saving</span></div>
-      <div class="editor-grid"><div class="editor-panel"><div class="panel-label"><span>Response body</span><button class="tiny-button" type="button" @click="copy(responseBody, 'Response copied to clipboard')">Copy JSON</button></div><textarea v-model="responseBody" aria-label="Custom JSON response" spellcheck="false"></textarea></div><div class="settings-panel"><label>Status code <input v-model.number="status" type="number" min="100" max="599" /></label><label>Headers <input v-model="headers" aria-label="Response headers" /></label><div class="hint"><span class="hint-icon">i</span><p>Supabase stores your saved mocks. Add credentials in Netlify to persist them across deploys.</p></div></div></div>
+      <div class="editor-grid"><div class="editor-panel"><div class="panel-label"><span>Custom API response <small>Editable JSON</small></span><div><button class="tiny-button" type="button" @click="useExample">Use example</button><button class="tiny-button" type="button" @click="copy(responseBody, 'Response copied to clipboard')">Copy JSON</button></div></div><textarea v-model="responseBody" aria-label="Custom API response JSON" placeholder="Enter the JSON your endpoint should return..." spellcheck="false"></textarea></div><div class="settings-panel"><label>Status code <input v-model.number="status" type="number" min="100" max="599" /></label><label>Headers <input v-model="headers" aria-label="Response headers" /></label><div class="hint"><span class="hint-icon">i</span><p>After saving, this exact JSON is returned by your endpoint.</p></div></div></div>
       <div class="action-row"><button class="primary-button" type="button" :disabled="isSaving" @click="saveMock">{{ isSaving ? 'Saving...' : 'Save mock' }} <span>→</span></button><span class="notice" :class="{ error: notice.includes('valid') || notice.includes('Could') }">{{ notice }}</span></div>
       <div v-if="response" class="result-panel"><div class="result-head"><span><span class="success-dot"></span> Function response</span><button class="tiny-button" type="button" @click="copy(JSON.stringify(response, null, 2), 'Result copied to clipboard')">Copy result</button></div><pre>{{ JSON.stringify(response, null, 2) }}</pre></div>
       <div class="share-strip"><div><span class="kicker">Quick share</span><strong>Hand this contract to your frontend.</strong></div><code>{{ curlCommand }}</code><button class="ghost-button" type="button" @click="copy(curlCommand, 'cURL command copied to clipboard')">Copy cURL</button></div>
