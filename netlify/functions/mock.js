@@ -5,6 +5,7 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null
 const localMocks = new Map()
+const dataStore = new Map()
 
 function getStoreKey(path, method, userId) {
   return `${userId || 'user-1'}:${String(method).toUpperCase()}:${path}`
@@ -132,6 +133,42 @@ function buildResponse(rawMock, requestedPath, query, body) {
   }
 }
 
+function getSpringMockRoute(requestedPath) {
+  const segments = String(requestedPath || '').split('/').filter(Boolean)
+
+  if (segments.length < 3) {
+    return null
+  }
+
+  const addIndex = segments.findIndex((segment) => segment === 'add')
+  if (addIndex > 0 && addIndex === segments.length - 2 && segments[addIndex + 1]) {
+    return {
+      type: 'add',
+      key: segments[addIndex + 1],
+      routePrefix: `/${segments.slice(0, addIndex).join('/')}`
+    }
+  }
+
+  const getDataIndex = segments.findIndex((segment) => segment === 'getData')
+  if (getDataIndex > 0 && getDataIndex === segments.length - 2 && segments[getDataIndex + 1]) {
+    return {
+      type: 'getData',
+      key: segments[getDataIndex + 1],
+      routePrefix: `/${segments.slice(0, getDataIndex).join('/')}`
+    }
+  }
+
+  return null
+}
+
+function getSpringStoreKey(userId, key) {
+  return `${userId || 'user-1'}:spring:${key}`
+}
+
+function isObjectLike(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function isSchemaMismatchError(error) {
   const message = (error && error.message) || ''
   return message.includes('does not exist') || message.includes('column') || message.includes('Could not find')
@@ -224,6 +261,38 @@ export default async (request) => {
       requestBody = bodyText ? JSON.parse(bodyText) : {}
     } catch {
       return new Response(JSON.stringify({ error: 'Request body must be valid JSON.' }), { status: 400, headers: baseHeaders })
+    }
+  }
+
+  const springRoute = getSpringMockRoute(requestedPath)
+
+  if (springRoute) {
+    const springStoreKey = getSpringStoreKey(requestedUser, springRoute.key)
+
+    if (request.method === 'POST' && springRoute.type === 'add') {
+      if (dataStore.has(springStoreKey)) {
+        return new Response(JSON.stringify({ error: 'Object already exists with this id' }), { status: 409, headers: baseHeaders })
+      }
+
+      const payload = isObjectLike(requestBody)
+        ? { ...requestBody }
+        : { value: requestBody }
+
+      payload.URL = `${springRoute.routePrefix}/getData/${springRoute.key}`
+      payload.msg = 'Successfully Added'
+      dataStore.set(springStoreKey, payload)
+
+      return new Response(JSON.stringify(payload), { status: 200, headers: baseHeaders })
+    }
+
+    if (request.method === 'GET' && springRoute.type === 'getData') {
+      const stored = dataStore.get(springStoreKey)
+
+      if (stored === undefined) {
+        return new Response(JSON.stringify({ error: 'Data is not present for this key' }), { status: 404, headers: baseHeaders })
+      }
+
+      return new Response(JSON.stringify(stored), { status: 200, headers: baseHeaders })
     }
   }
 

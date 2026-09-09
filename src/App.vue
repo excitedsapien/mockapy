@@ -51,6 +51,13 @@ const advancedRules = ref(`[
     }
   }
 ]`)
+const savedMocks = ref([])
+
+const savedMocksForActiveUser = computed(() => {
+  return savedMocks.value
+    .filter((mock) => mock.userId === activeUser.value)
+    .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+})
 
 const curlCommand = computed(() => {
   const url = new URL(`${window.location.origin}/.netlify/functions/mock`)
@@ -110,6 +117,16 @@ const usageExamples = computed(() => [
     value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/2')}&user=${encodeURIComponent(activeUser.value)}`
   },
   {
+    title: 'Spring-style add route',
+    helper: 'Store payloads behind a key using a route like /api/demo/add/1. The path shape is up to you, as long as it ends with /add/{key}.',
+    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}`
+  },
+  {
+    title: 'Spring-style get route',
+    helper: 'Retrieve the stored payload from the matching /getData/{key} route that was generated from your selected path shape.',
+    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/getData/1')}&user=${encodeURIComponent(activeUser.value)}`
+  },
+  {
     title: 'Body-aware request',
     helper: 'Use this cURL when your rule compares request JSON fields.',
     value: `curl -X POST "${requestBaseUrl.value}" -H "Content-Type: application/json" -d '{"id":1,"role":"admin"}'`
@@ -128,6 +145,8 @@ onMounted(() => {
   if (storedUser && userSlots.includes(storedUser)) {
     activeUser.value = storedUser
   }
+
+  savedMocks.value = loadSavedMocksFromStorage()
 })
 
 function toggleTheme() {
@@ -160,6 +179,62 @@ function useExample() {
   notice.value = 'Example response and matching rules loaded. Edit them before saving.'
 }
 
+function loadSavedMocksFromStorage() {
+  if (typeof localStorage === 'undefined') {
+    return []
+  }
+
+  try {
+    const raw = localStorage.getItem('mockapy-saved-mocks')
+    const parsed = JSON.parse(raw || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function persistSavedMocks() {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+
+  localStorage.setItem('mockapy-saved-mocks', JSON.stringify(savedMocks.value))
+}
+
+function upsertSavedMock(savedMock) {
+  const existingIndex = savedMocks.value.findIndex(
+    (item) => item.userId === savedMock.userId && item.path === savedMock.path && item.method === savedMock.method
+  )
+
+  if (existingIndex === -1) {
+    savedMocks.value.unshift(savedMock)
+  } else {
+    savedMocks.value.splice(existingIndex, 1, savedMock)
+  }
+
+  persistSavedMocks()
+}
+
+function loadSavedMock(entry) {
+  endpoint.value = entry.path
+  method.value = entry.method
+  status.value = entry.status
+  headers.value = entry.headers || 'Content-Type: application/json'
+  responseBody.value = typeof entry.body === 'string'
+    ? entry.body
+    : JSON.stringify(entry.body ?? {}, null, 2)
+  advancedRules.value = JSON.stringify(entry.rules ?? [], null, 2)
+  activeUser.value = entry.userId
+  localStorage.setItem('mockapy-active-user', entry.userId)
+  notice.value = `Loaded saved mock for ${entry.path}.`
+}
+
+function deleteSavedMock(id) {
+  savedMocks.value = savedMocks.value.filter((mock) => mock.id !== id)
+  persistSavedMocks()
+  notice.value = 'Saved mock deleted.'
+}
+
 async function saveMock() {
   notice.value = ''
 
@@ -185,6 +260,20 @@ async function saveMock() {
   }
 
   isSaving.value = true
+
+  const savedMock = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    path: endpoint.value,
+    method: method.value,
+    status: status.value,
+    headers: headers.value,
+    body,
+    rules: parsedRules,
+    userId: activeUser.value,
+    updatedAt: new Date().toISOString()
+  }
+
+  upsertSavedMock(savedMock)
 
   try {
     const result = await fetch('/.netlify/functions/mock', {
@@ -286,7 +375,24 @@ async function copy(value, message) {
           <select :value="activeUser" @change="setActiveUser" aria-label="Active user slot">
             <option v-for="slot in userSlots" :key="slot" :value="slot">{{ slot }}</option>
           </select>
-        </label><div class="hint"><span class="hint-icon">i</span><p>Each user slot keeps its own set of mocks. This lets up to five people work on different mock responses at the same time.</p></div></div></div>
+        </label>
+        <div class="saved-mocks">
+          <div class="panel-label"><span>Saved for this slot <small>local</small></span></div>
+          <div v-if="savedMocksForActiveUser.length" class="saved-mock-list">
+            <div v-for="savedMock in savedMocksForActiveUser" :key="savedMock.id" class="saved-mock-item">
+              <div class="saved-mock-meta">
+                <strong>{{ savedMock.method }}</strong>
+                <span>{{ savedMock.path }}</span>
+              </div>
+              <div class="saved-mock-actions">
+                <button class="tiny-button" type="button" @click="loadSavedMock(savedMock)">Load</button>
+                <button class="tiny-button danger" type="button" @click="deleteSavedMock(savedMock.id)">Delete</button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="empty-state">No saved mocks yet for this slot. Save one and it will stay here on refresh.</p>
+        </div>
+        <div class="hint"><span class="hint-icon">i</span><p>Each user slot keeps its own set of mocks. This lets up to five people work on different mock responses at the same time.</p></div></div></div>
       <div class="section-heading response-heading"><div><span class="kicker">03 / advanced</span><h2>Advanced mock features</h2></div><span class="helper">Match by query params, path params, or rule-specific payloads</span></div>
       <div class="editor-grid">
         <div class="editor-panel">
