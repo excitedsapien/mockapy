@@ -194,6 +194,7 @@ function handleCrudRequest(requestedPath, requestMethod, requestBody, requestedU
 
   const collectionPath = resourceInfo.collectionPath
   const collection = getCrudCollection(requestedUser, collectionPath)
+  const requestItemId = resourceInfo.itemId || (isObjectLike(requestBody) ? requestBody.id : null)
 
   if (requestMethod === 'GET' && !resourceInfo.itemId) {
     return new Response(JSON.stringify(collection), {
@@ -211,14 +212,16 @@ function handleCrudRequest(requestedPath, requestMethod, requestBody, requestedU
     })
   }
 
-  if (!resourceInfo.itemId) {
-    return new Response(JSON.stringify({ error: 'Resource id is required for this operation.' }), {
+  if (!requestItemId) {
+    return new Response(JSON.stringify({
+      error: 'Resource id is required for this operation. Include it in the URL path (for example /api/users/1) or in the request body.'
+    }), {
       status: 400,
       headers: baseHeaders
     })
   }
 
-  const itemIndex = collection.findIndex((item) => String(item.id) === String(resourceInfo.itemId))
+  const itemIndex = collection.findIndex((item) => String(item.id) === String(requestItemId))
 
   if (requestMethod === 'GET') {
     if (itemIndex === -1) {
@@ -257,7 +260,7 @@ function handleCrudRequest(requestedPath, requestMethod, requestBody, requestedU
       })
     }
 
-    const updatedItem = normalizeCrudItem(requestBody, resourceInfo.itemId)
+    const updatedItem = normalizeCrudItem(requestBody, requestItemId)
     collection.splice(itemIndex, 1, updatedItem)
     return new Response(JSON.stringify(updatedItem), {
       status: 200,
@@ -279,7 +282,7 @@ function handleCrudRequest(requestedPath, requestMethod, requestBody, requestedU
         ...existingItem,
         ...(isObjectLike(requestBody) ? requestBody : { value: requestBody })
       },
-      resourceInfo.itemId
+      requestItemId
     )
 
     collection.splice(itemIndex, 1, patchedItem)
