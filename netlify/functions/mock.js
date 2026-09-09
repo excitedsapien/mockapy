@@ -5,7 +5,7 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null
 const localMocks = new Map()
-const dataStore = new Map()
+const crudStore = new Map()
 
 function getStoreKey(path, method, userId) {
   return `${userId || 'user-1'}:${String(method).toUpperCase()}:${path}`
@@ -133,40 +133,163 @@ function buildResponse(rawMock, requestedPath, query, body) {
   }
 }
 
-function getSpringMockRoute(requestedPath) {
-  const segments = String(requestedPath || '').split('/').filter(Boolean)
+function isObjectLike(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
 
-  if (segments.length < 3) {
+function getCrudStoreKey(userId, path) {
+  return `${userId || 'user-1'}:crud:${path}`
+}
+
+function getResourceInfo(requestedPath) {
+  const normalizedPath = String(requestedPath || '/').replace(/\/+$/, '') || '/'
+  const segments = normalizedPath.split('/').filter(Boolean)
+
+  if (segments.length <= 1) {
+    return {
+      collectionPath: normalizedPath,
+      itemId: null
+    }
+  }
+
+  if (segments.length === 2) {
+    return {
+      collectionPath: normalizedPath,
+      itemId: null
+    }
+  }
+
+  return {
+    collectionPath: `/${segments.slice(0, -1).join('/')}`,
+    itemId: segments[segments.length - 1]
+  }
+}
+
+function getCrudCollection(userId, path) {
+  const key = getCrudStoreKey(userId, path)
+
+  if (!crudStore.has(key)) {
+    crudStore.set(key, [])
+  }
+
+  return crudStore.get(key)
+}
+
+function normalizeCrudItem(body, id) {
+  const item = isObjectLike(body) ? { ...body } : { value: body }
+
+  if (!item.id && id) {
+    item.id = id
+  }
+
+  return item
+}
+
+function handleCrudRequest(requestedPath, requestMethod, requestBody, requestedUser) {
+  const resourceInfo = getResourceInfo(requestedPath)
+
+  if (!resourceInfo.collectionPath || !resourceInfo.collectionPath.startsWith('/')) {
     return null
   }
 
-  const addIndex = segments.findIndex((segment) => segment === 'add')
-  if (addIndex > 0 && addIndex === segments.length - 2 && segments[addIndex + 1]) {
-    return {
-      type: 'add',
-      key: segments[addIndex + 1],
-      routePrefix: `/${segments.slice(0, addIndex).join('/')}`
-    }
+  const collectionPath = resourceInfo.collectionPath
+  const collection = getCrudCollection(requestedUser, collectionPath)
+
+  if (requestMethod === 'GET' && !resourceInfo.itemId) {
+    return new Response(JSON.stringify(collection), {
+      status: 200,
+      headers: baseHeaders
+    })
   }
 
-  const getDataIndex = segments.findIndex((segment) => segment === 'getData')
-  if (getDataIndex > 0 && getDataIndex === segments.length - 2 && segments[getDataIndex + 1]) {
-    return {
-      type: 'getData',
-      key: segments[getDataIndex + 1],
-      routePrefix: `/${segments.slice(0, getDataIndex).join('/')}`
+  if (requestMethod === 'POST' && !resourceInfo.itemId) {
+    const nextItem = normalizeCrudItem(requestBody, requestBody?.id || `item-${Date.now()}`)
+    collection.push(nextItem)
+    return new Response(JSON.stringify(nextItem), {
+      status: 201,
+      headers: baseHeaders
+    })
+  }
+
+  if (!resourceInfo.itemId) {
+    return new Response(JSON.stringify({ error: 'Resource id is required for this operation.' }), {
+      status: 400,
+      headers: baseHeaders
+    })
+  }
+
+  const itemIndex = collection.findIndex((item) => String(item.id) === String(resourceInfo.itemId))
+
+  if (requestMethod === 'GET') {
+    if (itemIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Resource not found.' }), {
+        status: 404,
+        headers: baseHeaders
+      })
     }
+
+    return new Response(JSON.stringify(collection[itemIndex]), {
+      status: 200,
+      headers: baseHeaders
+    })
+  }
+
+  if (requestMethod === 'DELETE') {
+    if (itemIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Resource not found.' }), {
+        status: 404,
+        headers: baseHeaders
+      })
+    }
+
+    const [deletedItem] = collection.splice(itemIndex, 1)
+    return new Response(JSON.stringify({ deleted: true, item: deletedItem }), {
+      status: 200,
+      headers: baseHeaders
+    })
+  }
+
+  if (requestMethod === 'PUT') {
+    if (itemIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Resource not found.' }), {
+        status: 404,
+        headers: baseHeaders
+      })
+    }
+
+    const updatedItem = normalizeCrudItem(requestBody, resourceInfo.itemId)
+    collection.splice(itemIndex, 1, updatedItem)
+    return new Response(JSON.stringify(updatedItem), {
+      status: 200,
+      headers: baseHeaders
+    })
+  }
+
+  if (requestMethod === 'PATCH') {
+    if (itemIndex === -1) {
+      return new Response(JSON.stringify({ error: 'Resource not found.' }), {
+        status: 404,
+        headers: baseHeaders
+      })
+    }
+
+    const existingItem = collection[itemIndex]
+    const patchedItem = normalizeCrudItem(
+      {
+        ...existingItem,
+        ...(isObjectLike(requestBody) ? requestBody : { value: requestBody })
+      },
+      resourceInfo.itemId
+    )
+
+    collection.splice(itemIndex, 1, patchedItem)
+    return new Response(JSON.stringify(patchedItem), {
+      status: 200,
+      headers: baseHeaders
+    })
   }
 
   return null
-}
-
-function getSpringStoreKey(userId, key) {
-  return `${userId || 'user-1'}:spring:${key}`
-}
-
-function isObjectLike(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isSchemaMismatchError(error) {
@@ -255,44 +378,12 @@ export default async (request) => {
   const requestedUser = url.searchParams.get('user') || url.searchParams.get('userId') || 'user-1'
 
   let requestBody = {}
-  if (request.method === 'POST') {
+  if (request.method !== 'GET') {
     try {
       const bodyText = await request.text()
       requestBody = bodyText ? JSON.parse(bodyText) : {}
     } catch {
       return new Response(JSON.stringify({ error: 'Request body must be valid JSON.' }), { status: 400, headers: baseHeaders })
-    }
-  }
-
-  const springRoute = getSpringMockRoute(requestedPath)
-
-  if (springRoute) {
-    const springStoreKey = getSpringStoreKey(requestedUser, springRoute.key)
-
-    if (request.method === 'POST' && springRoute.type === 'add') {
-      if (dataStore.has(springStoreKey)) {
-        return new Response(JSON.stringify({ error: 'Object already exists with this id' }), { status: 409, headers: baseHeaders })
-      }
-
-      const payload = isObjectLike(requestBody)
-        ? { ...requestBody }
-        : { value: requestBody }
-
-      payload.URL = `${springRoute.routePrefix}/getData/${springRoute.key}`
-      payload.msg = 'Successfully Added'
-      dataStore.set(springStoreKey, payload)
-
-      return new Response(JSON.stringify(payload), { status: 200, headers: baseHeaders })
-    }
-
-    if (request.method === 'GET' && springRoute.type === 'getData') {
-      const stored = dataStore.get(springStoreKey)
-
-      if (stored === undefined) {
-        return new Response(JSON.stringify({ error: 'Data is not present for this key' }), { status: 404, headers: baseHeaders })
-      }
-
-      return new Response(JSON.stringify(stored), { status: 200, headers: baseHeaders })
     }
   }
 
@@ -339,10 +430,6 @@ export default async (request) => {
     }
   }
 
-  if (request.method !== 'GET' && request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Use POST to save a mock.' }), { status: 405, headers: baseHeaders })
-  }
-
   const localMock = localMocks.get(getStoreKey(requestedPath, requestedMethod, requestedUser))
 
   if (localMock) {
@@ -373,6 +460,12 @@ export default async (request) => {
     } catch (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: baseHeaders })
     }
+  }
+
+  const crudResponse = handleCrudRequest(requestedPath, requestedMethod, requestBody, requestedUser)
+
+  if (crudResponse) {
+    return crudResponse
   }
 
   return new Response(JSON.stringify({ message: 'Mock endpoint is ready.', path: requestedPath, userId: requestedUser }), {

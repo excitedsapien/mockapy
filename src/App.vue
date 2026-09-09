@@ -14,7 +14,7 @@ const headers = ref('Content-Type: application/json')
 const isSaving = ref(false)
 const notice = ref('')
 const response = ref(null)
-const isDark = ref(false)
+const theme = ref('light')
 const activeUser = ref('user-1')
 const testQuery = ref('')
 const testBody = ref('')
@@ -123,21 +123,37 @@ const standardMockApiExamples = computed(() => [
   }
 ])
 
-const springStyleExamples = computed(() => [
+const themeOptions = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'contrast', label: 'High contrast' }
+]
+
+const advancedCrudExamples = computed(() => [
   {
-    title: 'Spring-style add route',
-    helper: 'Store payloads behind a key using a route like /api/demo/add/1. The path shape is up to you, as long as it ends with /add/{key}.',
-    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}`
+    title: 'Create a resource',
+    helper: 'Use POST to create a new mock record in a typical REST-style collection.',
+    value: `curl -X POST "${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users')}&user=${encodeURIComponent(activeUser.value)}" -H "Content-Type: application/json" -d '{"id":1,"name":"Alice","role":"admin"}'`
   },
   {
-    title: 'Spring-style get route',
-    helper: 'Retrieve the stored payload from the matching /getData/{key} route that was generated from your selected path shape.',
-    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/getData/1')}&user=${encodeURIComponent(activeUser.value)}`
+    title: 'List resources',
+    helper: 'Use GET on the collection path to retrieve all stored items for that resource.',
+    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users')}&user=${encodeURIComponent(activeUser.value)}`
   },
   {
-    title: 'Spring-style add request body',
-    helper: 'Use this sample POST body to create a stored object under the selected key.',
-    value: `curl -X POST "${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}" -H "Content-Type: application/json" -d '{"name":"Alice","role":"admin"}'`
+    title: 'Read one resource',
+    helper: 'Use GET with an item id to fetch one stored object.',
+    value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/1')}&user=${encodeURIComponent(activeUser.value)}`
+  },
+  {
+    title: 'Update a resource',
+    helper: 'Use PUT or PATCH to replace or partially update an existing item.',
+    value: `curl -X PUT "${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/1')}&user=${encodeURIComponent(activeUser.value)}" -H "Content-Type: application/json" -d '{"name":"Alice Updated","role":"owner"}'`
+  },
+  {
+    title: 'Delete a resource',
+    helper: 'Use DELETE to remove one stored object from the mock data set.',
+    value: `curl -X DELETE "${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/1')}&user=${encodeURIComponent(activeUser.value)}"`
   }
 ])
 
@@ -145,7 +161,7 @@ const beginnerGuides = computed(() => [
   {
     title: '1. Pick a user slot',
     summary: 'Keep every teammate or environment separated with its own mock data.',
-    detail: 'Use the active user slot selector in the side panel. Each slot stores its own saved mocks and Spring-style add/get records.',
+    detail: 'Use the active user slot selector in the side panel. Each slot stores its own saved mocks and advanced mock data records.',
     example: 'user-1'
   },
   {
@@ -173,18 +189,19 @@ Content-Type: application/json
     example: `GET /.netlify/functions/mock?path=${encodeURIComponent('/api/users')}&user=${encodeURIComponent(activeUser.value)}&id=1`
   },
   {
-    title: '4. Use Spring-style add/get routes',
-    summary: 'Create payloads by key, then read them back through the matching getData route.',
-    detail: 'The mock function supports paths that end with /add/{key} and /getData/{key}. The key must be unique for the chosen user slot.',
-    example: `POST /.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}
+    title: '4. Build a standard REST resource',
+    summary: 'Create a normal resource-based mock API that follows common industry patterns.',
+    detail: 'Use collection paths like /api/users for list/create requests, then append an id such as /api/users/1 for read, update, and delete calls.',
+    example: `POST /.netlify/functions/mock?path=${encodeURIComponent('/api/users')}&user=${encodeURIComponent(activeUser.value)}
 Content-Type: application/json
 
 {
+  "id": 1,
   "name": "Alice",
   "role": "admin"
 }
 
-GET /.netlify/functions/mock?path=${encodeURIComponent('/api/demo/getData/1')}&user=${encodeURIComponent(activeUser.value)}`
+GET /.netlify/functions/mock?path=${encodeURIComponent('/api/users/1')}&user=${encodeURIComponent(activeUser.value)}`
   },
   {
     title: '5. Add matching rules',
@@ -209,7 +226,11 @@ const exampleResponse = `{
 }`
 
 onMounted(() => {
-  isDark.value = localStorage.getItem('mockapy-theme') === 'dark'
+  const storedTheme = localStorage.getItem('mockapy-theme')
+  if (storedTheme && themeOptions.some((option) => option.value === storedTheme)) {
+    theme.value = storedTheme
+  }
+
   const storedUser = localStorage.getItem('mockapy-active-user')
 
   if (storedUser && userSlots.includes(storedUser)) {
@@ -219,9 +240,9 @@ onMounted(() => {
   savedMocks.value = loadSavedMocksFromStorage()
 })
 
-function toggleTheme() {
-  isDark.value = !isDark.value
-  localStorage.setItem('mockapy-theme', isDark.value ? 'dark' : 'light')
+function setTheme(nextTheme) {
+  theme.value = nextTheme
+  localStorage.setItem('mockapy-theme', nextTheme)
 }
 
 function setActiveUser(event) {
@@ -442,7 +463,7 @@ async function copy(value, message) {
 </script>
 
 <template>
-  <main class="shell" :class="{ dark: isDark }">
+  <main class="shell" :class="theme">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Mockapy home">
         <span class="brand-mark">M</span>
@@ -450,10 +471,20 @@ async function copy(value, message) {
       </a>
 
       <div class="topbar-meta">
+        <div class="theme-switcher" aria-label="Theme switcher">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            type="button"
+            class="theme-option"
+            :class="{ active: theme === option.value }"
+            @click="setTheme(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+
         <span class="status-chip"><span class="status-dot"></span> workspace / personal</span>
-        <button class="icon-button" type="button" :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'" @click="toggleTheme">
-          <span aria-hidden="true">{{ isDark ? 'sun' : 'moon' }}</span>
-        </button>
         <span class="avatar">MP</span>
       </div>
     </header>
@@ -690,12 +721,12 @@ async function copy(value, message) {
 
           <div class="usage-group">
             <div class="usage-group-head">
-              <h3>Spring-style features</h3>
-              <span class="pill">add / getData</span>
+              <h3>Advanced CRUD data store</h3>
+              <span class="pill">create / read / update / delete</span>
             </div>
 
             <div class="usage-grid">
-              <div v-for="example in springStyleExamples" :key="example.title" class="usage-card panel">
+              <div v-for="example in advancedCrudExamples" :key="example.title" class="usage-card panel">
                 <div class="usage-head">
                   <h3>{{ example.title }}</h3>
                   <button class="tiny-button" type="button" @click="copy(example.value, `${example.title} copied to clipboard`)">Copy</button>
