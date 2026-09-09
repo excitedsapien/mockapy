@@ -100,7 +100,7 @@ const requestBaseUrl = computed(() => {
   return url.toString()
 })
 
-const usageExamples = computed(() => [
+const standardMockApiExamples = computed(() => [
   {
     title: 'Basic GET request',
     helper: 'Open this URL in the browser or paste it into Postman to receive the saved mock for the selected user slot.',
@@ -117,6 +117,14 @@ const usageExamples = computed(() => [
     value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/users/2')}&user=${encodeURIComponent(activeUser.value)}`
   },
   {
+    title: 'Body-aware request',
+    helper: 'Use this cURL when your rule compares request JSON fields.',
+    value: `curl -X POST "${requestBaseUrl.value}" -H "Content-Type: application/json" -d '{"id":1,"role":"admin"}'`
+  }
+])
+
+const springStyleExamples = computed(() => [
+  {
     title: 'Spring-style add route',
     helper: 'Store payloads behind a key using a route like /api/demo/add/1. The path shape is up to you, as long as it ends with /add/{key}.',
     value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}`
@@ -127,9 +135,71 @@ const usageExamples = computed(() => [
     value: `${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/getData/1')}&user=${encodeURIComponent(activeUser.value)}`
   },
   {
-    title: 'Body-aware request',
-    helper: 'Use this cURL when your rule compares request JSON fields.',
-    value: `curl -X POST "${requestBaseUrl.value}" -H "Content-Type: application/json" -d '{"id":1,"role":"admin"}'`
+    title: 'Spring-style add request body',
+    helper: 'Use this sample POST body to create a stored object under the selected key.',
+    value: `curl -X POST "${window.location.origin}/.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}" -H "Content-Type: application/json" -d '{"name":"Alice","role":"admin"}'`
+  }
+])
+
+const beginnerGuides = computed(() => [
+  {
+    title: '1. Pick a user slot',
+    summary: 'Keep every teammate or environment separated with its own mock data.',
+    detail: 'Use the active user slot selector in the side panel. Each slot stores its own saved mocks and Spring-style add/get records.',
+    example: 'user-1'
+  },
+  {
+    title: '2. Save a mock endpoint',
+    summary: 'Define the endpoint, method, status, and JSON response you want to return.',
+    detail: 'This is the main flow for creating a reusable mock route that you can call from your frontend, Postman, or browser.',
+    example: `POST /.netlify/functions/mock
+Content-Type: application/json
+
+{
+  "mode": "save",
+  "path": "/api/users",
+  "method": "GET",
+  "userId": "user-1",
+  "status": 200,
+  "body": {
+    "users": [{ "id": 1, "name": "Ada Lovelace" }]
+  }
+}`
+  },
+  {
+    title: '3. Test a live request',
+    summary: 'Preview the exact URL and response before wiring it into your app.',
+    detail: 'Use the tester panel to add query params and JSON body values, then run the request live and inspect the result.',
+    example: `GET /.netlify/functions/mock?path=${encodeURIComponent('/api/users')}&user=${encodeURIComponent(activeUser.value)}&id=1`
+  },
+  {
+    title: '4. Use Spring-style add/get routes',
+    summary: 'Create payloads by key, then read them back through the matching getData route.',
+    detail: 'The mock function supports paths that end with /add/{key} and /getData/{key}. The key must be unique for the chosen user slot.',
+    example: `POST /.netlify/functions/mock?path=${encodeURIComponent('/api/demo/add/1')}&user=${encodeURIComponent(activeUser.value)}
+Content-Type: application/json
+
+{
+  "name": "Alice",
+  "role": "admin"
+}
+
+GET /.netlify/functions/mock?path=${encodeURIComponent('/api/demo/getData/1')}&user=${encodeURIComponent(activeUser.value)}`
+  },
+  {
+    title: '5. Add matching rules',
+    summary: 'Return different responses for the same route when query, params, or body match.',
+    detail: 'Rules let you keep one endpoint but vary the response based on request details such as id=1, a path param, or JSON payload keys.',
+    example: `[
+  {
+    "name": "Return admin user by query",
+    "match": { "query": { "id": "1" } },
+    "response": {
+      "status": 200,
+      "body": { "id": 1, "role": "admin" }
+    }
+  }
+]`
   }
 ])
 
@@ -349,58 +419,232 @@ async function runRequestTest() {
 }
 
 async function copy(value, message) {
-  await navigator.clipboard.writeText(value)
-  notice.value = message
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value)
+    } else {
+      const fallback = document.createElement('textarea')
+      fallback.value = value
+      fallback.setAttribute('readonly', '')
+      fallback.style.position = 'fixed'
+      fallback.style.top = '-9999px'
+      document.body.appendChild(fallback)
+      fallback.select()
+      document.execCommand('copy')
+      document.body.removeChild(fallback)
+    }
+
+    notice.value = message
+  } catch {
+    notice.value = 'Copy failed. Please copy the example manually.'
+  }
 }
 </script>
 
 <template>
   <main class="shell" :class="{ dark: isDark }">
-    <header class="topbar"><a class="brand" href="/" aria-label="Mockapy home"><span class="brand-mark">M</span><span>mockapy</span></a><div class="topbar-meta"><span class="status-dot"></span> workspace / personal <button class="theme-toggle" type="button" :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'" @click="toggleTheme"><span aria-hidden="true">{{ isDark ? 'sun' : 'moon' }}</span></button><span class="avatar">MP</span></div></header>
-    <section class="intro"><div><p class="eyebrow">API playground</p><h1>Shape the response<br /><em>before</em> you ship it.</h1><p class="lede">A tiny, calm place to design mock endpoints and share a contract with your team.</p></div><div class="intro-note"><span>01</span><p>Draft an endpoint<br />in a few seconds.</p></div></section>
-    <section class="how-to-use">
-      <div class="section-heading"><div><span class="kicker">00 / how to use</span><h2>Beginner guide</h2></div></div>
-      <div class="steps-grid">
-        <div class="step-card"><span class="step-number">1</span><h3>Choose a user slot</h3><p>Pick user-1 through user-5 so each teammate can work on separate mock responses without overwriting someone else.</p></div>
-        <div class="step-card"><span class="step-number">2</span><h3>Define the endpoint</h3><p>Set the path, HTTP method, and JSON response you want the mock API to return.</p></div>
-        <div class="step-card"><span class="step-number">3</span><h3>Use advanced rules</h3><p>Add query, params, or body matching rules when the same endpoint should return different responses for different requests.</p></div>
-        <div class="step-card"><span class="step-number">4</span><h3>Copy a ready-to-use URL</h3><p>Use the examples below to paste the request directly into your browser, Postman, or frontend app.</p></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Mockapy home">
+        <span class="brand-mark">M</span>
+        <span>mockapy</span>
+      </a>
+
+      <div class="topbar-meta">
+        <span class="status-chip"><span class="status-dot"></span> workspace / personal</span>
+        <button class="icon-button" type="button" :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'" @click="toggleTheme">
+          <span aria-hidden="true">{{ isDark ? 'sun' : 'moon' }}</span>
+        </button>
+        <span class="avatar">MP</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">API playground</p>
+        <h1>Shape the response<br /><span>before</span> you ship it.</h1>
+        <p class="lede">A calm place to design mock endpoints, test request flows, and share a frontend-ready contract with your team.</p>
+
+        <div class="hero-actions">
+          <button class="primary-button" type="button" :disabled="isSaving" @click="saveMock">
+            {{ isSaving ? 'Saving...' : 'Save mock' }}
+          </button>
+          <button class="ghost-button" type="button" :disabled="isTesting" @click="runRequestTest">
+            {{ isTesting ? 'Testing...' : 'Run live test' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="panel hero-panel">
+        <div class="panel-head">
+          <span>Quick stats</span>
+          <span class="panel-tag">live</span>
+        </div>
+
+        <div class="stats-grid">
+          <div class="mini-stat">
+            <span>slots</span>
+            <strong>5</strong>
+          </div>
+          <div class="mini-stat">
+            <span>routes</span>
+            <strong>{{ savedMocksForActiveUser.length }}</strong>
+          </div>
+          <div class="mini-stat">
+            <span>status</span>
+            <strong>{{ status }}</strong>
+          </div>
+        </div>
+
+        <div class="code-block">
+          <pre>{{ curlCommand }}</pre>
+        </div>
       </div>
     </section>
-    <section class="workspace">
-      <div class="section-heading"><div><span class="kicker">01 / endpoint</span><h2>Define your route</h2></div><span class="pill">Unsaved draft</span></div>
-      <div class="request-line"><select v-model="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input v-model="endpoint" aria-label="Endpoint path" spellcheck="false" /><button class="ghost-button" type="button" @click="copy(endpoint, 'Endpoint copied to clipboard')">Copy path</button></div>
-      <div class="section-heading response-heading"><div><span class="kicker">02 / response</span><h2>Make it real</h2></div><span class="helper">JSON is validated before saving</span></div>
-      <div class="editor-grid"><div class="editor-panel"><div class="panel-label"><span>Custom API response <small>Editable JSON</small></span><div><button class="tiny-button" type="button" @click="useExample">Use example</button><button class="tiny-button" type="button" @click="copy(responseBody, 'Response copied to clipboard')">Copy JSON</button></div></div><textarea v-model="responseBody" aria-label="Custom API response JSON" placeholder="Enter the JSON your endpoint should return..." spellcheck="false"></textarea></div><div class="settings-panel"><label>Status code <input v-model.number="status" type="number" min="100" max="599" /></label><label>Headers <input v-model="headers" aria-label="Response headers" /></label><label>Active user slot
-          <select :value="activeUser" @change="setActiveUser" aria-label="Active user slot">
-            <option v-for="slot in userSlots" :key="slot" :value="slot">{{ slot }}</option>
-          </select>
-        </label>
-        <div class="saved-mocks">
-          <div class="panel-label"><span>Saved for this slot <small>local</small></span></div>
-          <div v-if="savedMocksForActiveUser.length" class="saved-mock-list">
-            <div v-for="savedMock in savedMocksForActiveUser" :key="savedMock.id" class="saved-mock-item">
-              <div class="saved-mock-meta">
-                <strong>{{ savedMock.method }}</strong>
-                <span>{{ savedMock.path }}</span>
-              </div>
-              <div class="saved-mock-actions">
-                <button class="tiny-button" type="button" @click="loadSavedMock(savedMock)">Load</button>
-                <button class="tiny-button danger" type="button" @click="deleteSavedMock(savedMock.id)">Delete</button>
+
+    <section class="how-to-use">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">00 / how to use</span>
+          <h2>Beginner guide</h2>
+        </div>
+      </div>
+
+      <div class="guide-accordion-list">
+        <details v-for="(guide, index) in beginnerGuides" :key="guide.title" class="guide-accordion panel" :open="index === 0">
+          <summary>
+            <div class="guide-summary-content">
+              <span class="guide-index">{{ index + 1 }}</span>
+              <div class="guide-text">
+                <strong>{{ guide.title }}</strong>
+                <small>{{ guide.summary }}</small>
               </div>
             </div>
+            <button class="tiny-button" type="button" @click.stop="copy(guide.example, `${guide.title} example copied to clipboard`)">Copy example</button>
+          </summary>
+          <div class="guide-content">
+            <p>{{ guide.detail }}</p>
+            <div class="guide-example">
+              <code>{{ guide.example }}</code>
+            </div>
           </div>
-          <p v-else class="empty-state">No saved mocks yet for this slot. Save one and it will stay here on refresh.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">01 / endpoint</span>
+          <h2>Define your route</h2>
         </div>
-        <div class="hint"><span class="hint-icon">i</span><p>Each user slot keeps its own set of mocks. This lets up to five people work on different mock responses at the same time.</p></div></div></div>
-      <div class="section-heading response-heading"><div><span class="kicker">03 / advanced</span><h2>Advanced mock features</h2></div><span class="helper">Match by query params, path params, or rule-specific payloads</span></div>
-      <div class="editor-grid">
-        <div class="editor-panel">
-          <div class="panel-label"><span>Matching rules <small>JSON</small></span><div><button class="tiny-button" type="button" @click="copy(advancedRules, 'Rules copied to clipboard')">Copy rules</button></div></div>
+        <span class="pill">Unsaved draft</span>
+      </div>
+
+      <div class="panel request-panel">
+        <div class="request-line">
+          <select v-model="method" aria-label="HTTP method">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>PATCH</option>
+            <option>DELETE</option>
+          </select>
+          <input v-model="endpoint" aria-label="Endpoint path" spellcheck="false" />
+          <button class="ghost-button" type="button" @click="copy(endpoint, 'Endpoint copied to clipboard')">Copy path</button>
+        </div>
+      </div>
+
+      <div class="section-heading response-heading">
+        <div>
+          <span class="kicker">02 / response</span>
+          <h2>Make it real</h2>
+        </div>
+        <span class="helper">JSON is validated before saving</span>
+      </div>
+
+      <div class="content-grid">
+        <div class="panel editor-panel">
+          <div class="panel-label">
+            <span>Custom API response <small>Editable JSON</small></span>
+            <div>
+              <button class="tiny-button" type="button" @click="useExample">Use example</button>
+              <button class="tiny-button" type="button" @click="copy(responseBody, 'Response copied to clipboard')">Copy JSON</button>
+            </div>
+          </div>
+          <textarea v-model="responseBody" aria-label="Custom API response JSON" placeholder="Enter the JSON your endpoint should return..." spellcheck="false"></textarea>
+        </div>
+
+        <aside class="panel side-panel">
+          <label>
+            Status code
+            <input v-model.number="status" type="number" min="100" max="599" />
+          </label>
+
+          <label>
+            Headers
+            <input v-model="headers" aria-label="Response headers" />
+          </label>
+
+          <label>
+            Active user slot
+            <select :value="activeUser" @change="setActiveUser" aria-label="Active user slot">
+              <option v-for="slot in userSlots" :key="slot" :value="slot">{{ slot }}</option>
+            </select>
+          </label>
+
+          <div class="saved-mocks">
+            <div class="panel-label saved-label">
+              <span>Saved for this slot <small>local</small></span>
+            </div>
+
+            <div v-if="savedMocksForActiveUser.length" class="saved-mock-list">
+              <div v-for="savedMock in savedMocksForActiveUser" :key="savedMock.id" class="saved-mock-item">
+                <div class="saved-mock-meta">
+                  <strong>{{ savedMock.method }}</strong>
+                  <span>{{ savedMock.path }}</span>
+                </div>
+                <div class="saved-mock-actions">
+                  <button class="tiny-button" type="button" @click="loadSavedMock(savedMock)">Load</button>
+                  <button class="tiny-button danger" type="button" @click="deleteSavedMock(savedMock.id)">Delete</button>
+                </div>
+              </div>
+            </div>
+
+            <p v-else class="empty-state">No saved mocks yet for this slot. Save one and it will stay here on refresh.</p>
+          </div>
+
+          <div class="hint">
+            <span class="hint-icon">i</span>
+            <p>Each user slot keeps its own set of mocks, so up to five people can work on different response contracts at the same time.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="section-heading response-heading">
+        <div>
+          <span class="kicker">03 / advanced</span>
+          <h2>Advanced mock features</h2>
+        </div>
+        <span class="helper">Match by query params, path params, or request payloads</span>
+      </div>
+
+      <div class="content-grid">
+        <div class="panel editor-panel">
+          <div class="panel-label">
+            <span>Matching rules <small>JSON</small></span>
+            <div>
+              <button class="tiny-button" type="button" @click="copy(advancedRules, 'Rules copied to clipboard')">Copy rules</button>
+            </div>
+          </div>
           <textarea v-model="advancedRules" aria-label="Advanced mock rules JSON" placeholder='[{ "name": "Specific response", "match": { "query": { "id": "1" } }, "response": { "status": 200, "body": { "ok": true } } }]' spellcheck="false"></textarea>
         </div>
-        <div class="settings-panel">
-          <div class="hint advanced-hint"><span class="hint-icon">i</span><p>Use the rules below to return a different response whenever a request matches the same endpoint but carries different query params, URL params, or request data.</p></div>
+
+        <div class="panel side-panel">
+          <div class="hint advanced-hint">
+            <span class="hint-icon">i</span>
+            <p>Use these rules to return different responses for the same endpoint when the request carries different query params, URL params, or payload data.</p>
+          </div>
+
           <div class="advanced-example">
             <strong>Example rule shape</strong>
             <code>{
@@ -416,42 +660,136 @@ async function copy(value, message) {
           </div>
         </div>
       </div>
+
       <div class="usage-examples">
-        <div class="section-heading"><div><span class="kicker">04 / copy-ready</span><h2>Copy a ready-to-use URL</h2></div></div>
-        <div class="usage-grid">
-          <div v-for="example in usageExamples" :key="example.title" class="usage-card">
-            <div class="usage-head"><h3>{{ example.title }}</h3><button class="tiny-button" type="button" @click="copy(example.value, `${example.title} copied to clipboard`)">Copy</button></div>
-            <p>{{ example.helper }}</p>
-            <code>{{ example.value }}</code>
+        <div class="section-heading">
+          <div>
+            <span class="kicker">04 / copy-ready</span>
+            <h2>Copy a ready-to-use request</h2>
+          </div>
+        </div>
+
+        <div class="usage-sections">
+          <div class="usage-group">
+            <div class="usage-group-head">
+              <h3>Generic mock API features</h3>
+              <span class="pill">Standard use</span>
+            </div>
+
+            <div class="usage-grid">
+              <div v-for="example in standardMockApiExamples" :key="example.title" class="usage-card panel">
+                <div class="usage-head">
+                  <h3>{{ example.title }}</h3>
+                  <button class="tiny-button" type="button" @click="copy(example.value, `${example.title} copied to clipboard`)">Copy</button>
+                </div>
+                <p>{{ example.helper }}</p>
+                <code>{{ example.value }}</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="usage-group">
+            <div class="usage-group-head">
+              <h3>Spring-style features</h3>
+              <span class="pill">add / getData</span>
+            </div>
+
+            <div class="usage-grid">
+              <div v-for="example in springStyleExamples" :key="example.title" class="usage-card panel">
+                <div class="usage-head">
+                  <h3>{{ example.title }}</h3>
+                  <button class="tiny-button" type="button" @click="copy(example.value, `${example.title} copied to clipboard`)">Copy</button>
+                </div>
+                <p>{{ example.helper }}</p>
+                <code>{{ example.value }}</code>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="action-row"><button class="primary-button" type="button" :disabled="isSaving" @click="saveMock">{{ isSaving ? 'Saving...' : 'Save mock' }} <span>→</span></button><span class="notice" :class="{ error: notice.includes('valid') || notice.includes('Could') }">{{ notice }}</span></div>
-      <div v-if="response" class="result-panel"><div class="result-head"><span><span class="success-dot"></span> Function response</span><button class="tiny-button" type="button" @click="copy(JSON.stringify(response, null, 2), 'Result copied to clipboard')">Copy result</button></div><pre>{{ JSON.stringify(response, null, 2) }}</pre></div>
-      <div class="share-strip"><div><span class="kicker">Quick share</span><strong>Hand this contract to your frontend.</strong></div><code>{{ curlCommand }}</code><button class="ghost-button" type="button" @click="copy(curlCommand, 'cURL command copied to clipboard')">Copy cURL</button></div>
-      <div class="section-heading response-heading"><div><span class="kicker">04 / tester</span><h2>Try the mock live</h2></div><span class="helper">Beginner-friendly preview of the exact URL and response</span></div>
-      <div class="editor-grid">
-        <div class="editor-panel">
-          <div class="panel-label"><span>Request tester <small>Live</small></span><div><button class="tiny-button" type="button" :disabled="isTesting" @click="runRequestTest">{{ isTesting ? 'Testing...' : 'Run test' }}</button></div></div>
+
+      <div class="action-row">
+        <button class="primary-button" type="button" :disabled="isSaving" @click="saveMock">
+          {{ isSaving ? 'Saving...' : 'Save mock' }}
+        </button>
+        <span class="notice" :class="{ error: notice.includes('valid') || notice.includes('Could') }">{{ notice }}</span>
+      </div>
+
+      <div v-if="response" class="panel result-panel">
+        <div class="result-head">
+          <span><span class="success-dot"></span> Function response</span>
+          <button class="tiny-button" type="button" @click="copy(JSON.stringify(response, null, 2), 'Result copied to clipboard')">Copy result</button>
+        </div>
+        <pre>{{ JSON.stringify(response, null, 2) }}</pre>
+      </div>
+
+      <div class="share-strip panel">
+        <div>
+          <span class="kicker">Quick share</span>
+          <strong>Hand this contract to your frontend.</strong>
+        </div>
+        <code>{{ curlCommand }}</code>
+        <button class="ghost-button" type="button" @click="copy(curlCommand, 'cURL command copied to clipboard')">Copy cURL</button>
+      </div>
+
+      <div class="section-heading response-heading">
+        <div>
+          <span class="kicker">05 / tester</span>
+          <h2>Try the mock live</h2>
+        </div>
+        <span class="helper">Preview the exact URL and returned response</span>
+      </div>
+
+      <div class="content-grid">
+        <div class="panel editor-panel tester-panel">
+          <div class="panel-label">
+            <span>Request tester <small>Live</small></span>
+            <div>
+              <button class="tiny-button" type="button" :disabled="isTesting" @click="runRequestTest">
+                {{ isTesting ? 'Testing...' : 'Run test' }}
+              </button>
+            </div>
+          </div>
+
           <div class="tester-grid">
-            <label>Query params <input v-model="testQuery" aria-label="Query params for mock tester" placeholder="id=1&scenario=success" spellcheck="false" /></label>
-            <label>Request body <textarea v-model="testBody" aria-label="Request body for mock tester" placeholder='{"id": 1, "role": "admin"}' spellcheck="false"></textarea></label>
+            <label>
+              Query params
+              <input v-model="testQuery" aria-label="Query params for mock tester" placeholder="id=1&scenario=success" spellcheck="false" />
+            </label>
+
+            <label>
+              Request body
+              <textarea v-model="testBody" aria-label="Request body for mock tester" placeholder='{"id": 1, "role": "admin"}' spellcheck="false"></textarea>
+            </label>
           </div>
         </div>
-        <div class="settings-panel">
-          <div class="hint"><span class="hint-icon">i</span><p>Use the URL below to copy the exact request for the current endpoint, selected user slot, and query parameters.</p></div>
-          <div class="advanced-example">
+
+        <div class="panel side-panel">
+          <div class="hint">
+            <span class="hint-icon">i</span>
+            <p>Use the URL below to copy the exact request for the current endpoint, selected user slot, and query parameters.</p>
+          </div>
+
+          <div class="advanced-example url-example">
             <strong>Copyable mock URL</strong>
             <code>{{ testUrl }}</code>
           </div>
+
           <button class="ghost-button" type="button" @click="copy(testUrl, 'Mock URL copied to clipboard')">Copy mock URL</button>
+
           <div v-if="testResult" class="result-panel compact-result">
-            <div class="result-head"><span><span class="success-dot"></span> Test response</span></div>
+            <div class="result-head">
+              <span><span class="success-dot"></span> Test response</span>
+            </div>
             <pre>{{ testResult.error ? testResult.error : JSON.stringify(testResult.body, null, 2) }}</pre>
           </div>
         </div>
       </div>
     </section>
-    <footer><span>mockapy / 2026</span><span>Powered by Vue + Netlify + Supabase</span></footer>
+
+    <footer>
+      <span>mockapy / 2026</span>
+      <span>Powered by Vue + Netlify + Supabase</span>
+    </footer>
   </main>
 </template>
