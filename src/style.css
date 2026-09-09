@@ -531,7 +531,12 @@ label input,
 label select,
 textarea {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+select option {
+  background: var(--paper);
   color: var(--ink);
 }
 
@@ -1050,7 +1055,14 @@ footer {
 .shell.contrast label select,
 .shell.contrast .request-line input,
 .shell.contrast .request-line select {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--soft);
+  color: var(--ink);
+}
+
+.shell.dark select option,
+.shell.contrast select option {
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .shell.dark .panel-label,
