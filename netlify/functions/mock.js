@@ -145,14 +145,7 @@ function getResourceInfo(requestedPath) {
   const normalizedPath = String(requestedPath || '/').replace(/\/+$/, '') || '/'
   const segments = normalizedPath.split('/').filter(Boolean)
 
-  if (segments.length <= 1) {
-    return {
-      collectionPath: normalizedPath,
-      itemId: null
-    }
-  }
-
-  if (segments.length === 2) {
+  if (segments.length <= 2) {
     return {
       collectionPath: normalizedPath,
       itemId: null
