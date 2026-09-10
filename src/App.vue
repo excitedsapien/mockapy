@@ -129,6 +129,39 @@ const themeOptions = [
   { value: 'contrast', label: 'High contrast' }
 ]
 
+const featureCards = [
+  {
+    icon: '🧩',
+    title: 'User slots',
+    text: 'Keep separate mock datasets for each user slot without changing the base request flow.'
+  },
+  {
+    icon: '🧪',
+    title: 'Live request tester',
+    text: 'Preview any mock endpoint instantly and inspect the response before wiring it into an app.'
+  },
+  {
+    icon: '⚙️',
+    title: 'Matching rules',
+    text: 'Return different responses for the same route using query, params, or payload-based matching.'
+  },
+  {
+    icon: '💾',
+    title: 'Local persistence',
+    text: 'Save your mock configuration in the browser so it stays available across refreshes.'
+  },
+  {
+    icon: '🔁',
+    title: 'Copy-ready examples',
+    text: 'Generate cURL and URL examples for common GET, POST, PUT, PATCH, and DELETE flows.'
+  },
+  {
+    icon: '🎨',
+    title: 'Theme switching',
+    text: 'Move between light, dark, and high-contrast modes without touching the mock logic.'
+  }
+]
+
 const advancedCrudExamples = computed(() => [
   {
     title: 'Create a resource',
@@ -532,10 +565,27 @@ async function copy(value, message) {
       </div>
     </section>
 
+    <section class="feature-section">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">00 / features</span>
+          <h2>Included capabilities</h2>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <article v-for="feature in featureCards" :key="feature.title" class="feature-card panel">
+          <div class="feature-icon">{{ feature.icon }}</div>
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.text }}</p>
+        </article>
+      </div>
+    </section>
+
     <section class="how-to-use">
       <div class="section-heading">
         <div>
-          <span class="kicker">00 / how to use</span>
+          <span class="kicker">01 / how to use</span>
           <h2>Beginner guide</h2>
         </div>
       </div>
