@@ -132,7 +132,7 @@ const themeOptions = [
 const featureCards = [
   {
     icon: '🧩',
-    title: 'User slots',
+    title: 'Multi-user slots',
     text: 'Keep separate mock datasets for each user slot without changing the base request flow.'
   },
   {
@@ -142,7 +142,7 @@ const featureCards = [
   },
   {
     icon: '⚙️',
-    title: 'Matching rules',
+    title: 'Smart matching rules',
     text: 'Return different responses for the same route using query, params, or payload-based matching.'
   },
   {
@@ -159,6 +159,39 @@ const featureCards = [
     icon: '🎨',
     title: 'Theme switching',
     text: 'Move between light, dark, and high-contrast modes without touching the mock logic.'
+  }
+]
+
+const premiumFeatureCards = [
+  {
+    icon: '📦',
+    title: 'CRUD data store',
+    text: 'Store, read, update, and delete mock records with familiar REST-style patterns.'
+  },
+  {
+    icon: '📡',
+    title: 'Response headers & status',
+    text: 'Control status codes and headers to mirror the realistic contract your frontend expects.'
+  },
+  {
+    icon: '🧠',
+    title: 'Conditional response logic',
+    text: 'Serve different payloads for the same path based on request details and matching rules.'
+  },
+  {
+    icon: '🛡️',
+    title: 'Reliable local-first workflow',
+    text: 'Work quickly in preview mode, then deploy when your mock API is ready for production use.'
+  },
+  {
+    icon: '👥',
+    title: 'Team-friendly contracts',
+    text: 'Share clean mock endpoints with designers, QA, and frontend engineers using one consistent interface.'
+  },
+  {
+    icon: '⚡',
+    title: 'Fast iteration loop',
+    text: 'Adjust mock payloads, run tests, and validate UX flows in a single focused workspace.'
   }
 ]
 
@@ -575,6 +608,23 @@ async function copy(value, message) {
 
       <div class="feature-grid">
         <article v-for="feature in featureCards" :key="feature.title" class="feature-card panel">
+          <div class="feature-icon">{{ feature.icon }}</div>
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.text }}</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="premium-feature-section">
+      <div class="section-heading compact-heading">
+        <div>
+          <span class="kicker">01 / premium stack</span>
+          <h2>Everything a modern mock API should include</h2>
+        </div>
+      </div>
+
+      <div class="premium-grid">
+        <article v-for="feature in premiumFeatureCards" :key="feature.title" class="premium-feature-card panel">
           <div class="feature-icon">{{ feature.icon }}</div>
           <h3>{{ feature.title }}</h3>
           <p>{{ feature.text }}</p>
