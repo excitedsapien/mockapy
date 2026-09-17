@@ -1,11 +1,72 @@
 import { createClient } from '@supabase/supabase-js'
 
 const baseHeaders = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+const airtableApiKey = process.env.AIRTABLE_PAT || ''
+const airtableBaseId = process.env.AIRTABLE_BASE_ID || ''
+const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'mocks'
+const airtable = airtableApiKey && airtableBaseId
+  ? { apiKey: airtableApiKey, baseId: airtableBaseId, tableName: airtableTableName }
+  : null
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null
 const localMocks = new Map()
 const crudStore = new Map()
+
+function serializeStoredJson(value) {
+  if (value === undefined || value === null || value === '') {
+    return JSON.stringify([])
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value)
+}
+
+function parseStoredJson(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return fallback
+    }
+  }
+
+  return value
+}
+
+async function airtableRequest(method, path = '', payload) {
+  if (!airtable) return null
+
+  const url = new URL(`https://api.airtable.com/v0/${airtable.baseId}/${encodeURIComponent(airtable.tableName)}${path}`)
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${airtable.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: payload ? JSON.stringify(payload) : undefined
+  })
+
+  const responseText = await response.text()
+  if (!response.ok) {
+    throw new Error(responseText || 'Airtable request failed')
+  }
+
+  return responseText ? JSON.parse(responseText) : null
+}
+
+function escapeAirtableFormulaValue(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+}
 
 function getStoreKey(path, method, userId) {
   return `${userId || 'user-1'}:${String(method).toUpperCase()}:${path}`
@@ -294,6 +355,26 @@ function isSchemaMismatchError(error) {
 }
 
 async function readPersistedMock(path, method, userId) {
+  if (airtable) {
+    const formula = `AND({path}="${escapeAirtableFormulaValue(path)}",{method}="${escapeAirtableFormulaValue(method)}",{user_id}="${escapeAirtableFormulaValue(userId)}")`
+    const data = await airtableRequest('GET', `?filterByFormula=${encodeURIComponent(formula)}`)
+    const record = data?.records?.[0]
+
+    if (!record) {
+      return null
+    }
+
+    const fields = record.fields || {}
+    return {
+      recordId: record.id,
+      status: Number(fields.status ?? 200),
+      headers: fields.headers || 'Content-Type: application/json',
+      body: parseStoredJson(fields.body, {}),
+      rules: parseStoredJson(fields.rules, []),
+      user_id: fields.user_id || userId
+    }
+  }
+
   if (!supabase) return null
 
   try {
@@ -325,6 +406,30 @@ async function readPersistedMock(path, method, userId) {
 }
 
 async function persistMock(savedMock) {
+  if (airtable) {
+    const existing = await readPersistedMock(savedMock.path, savedMock.method, savedMock.userId)
+
+    const payload = {
+      fields: {
+        path: savedMock.path,
+        method: savedMock.method,
+        user_id: savedMock.userId,
+        status: Number(savedMock.status || 200),
+        headers: savedMock.headers || 'Content-Type: application/json',
+        body: serializeStoredJson(savedMock.body ?? {}),
+        rules: serializeStoredJson(Array.isArray(savedMock.rules) ? savedMock.rules : [])
+      }
+    }
+
+    if (existing?.recordId) {
+      await airtableRequest('PATCH', `/${existing.recordId}`, payload)
+      return
+    }
+
+    await airtableRequest('POST', '', { records: [payload] })
+    return
+  }
+
   if (!supabase) return
 
   try {
